@@ -9,6 +9,7 @@ import wisp from "wisp-server-node";
 import request from "@cypress/request";
 import chalk from "chalk";
 import packageJson from "./package.json" assert { type: "json" };
+import compression from "compression";
 
 const __dirname = path.resolve();
 const server = http.createServer();
