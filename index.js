@@ -12,12 +12,12 @@ import packageJson from "./package.json" assert { type: "json" };
 
 const __dirname = path.resolve();
 const server = http.createServer();
-const bareServer = createBareServer("/bear/");
+const bareServer = createBareServer("/bare/");
 const app = express();
 const version = packageJson.version;
 const discord = "https://discord.gg/unblocking";
 
-// Pre-compile routes once to improve route lookup performance
+// Pre-compiled routes
 const routes = [
   { route: "/app", file: "./static/index.html" },
   { route: "/portal", file: "./static/loader.html" },
@@ -28,30 +28,26 @@ const routes = [
   { route: "/edu", file: "./static/loading.html" }
 ];
 
-// Use compression for faster content delivery
-import compression from "compression";
+// Middleware setup
 app.use(compression());
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Serve static files with proper cache control for better performance
 app.use(express.static(path.join(__dirname, "static"), { maxAge: "1d" }));
 app.use("/uv/", express.static(uvPath, { maxAge: "1d" }));
 app.use("/libcurl/", express.static(libcurlPath, { maxAge: "1d" }));
 app.use("/baremux/", express.static(baremuxPath, { maxAge: "1d" }));
 
-// Route handling
+// Routes setup
 routes.forEach(({ route, file }) => {
   app.get(route, (req, res) => {
     res.sendFile(path.join(__dirname, file));
   });
 });
 
-// Use more efficient redirection
+// Redirection
 app.get("/student", (_, res) => res.redirect(302, "/portal"));
 
-// Cache external request (if frequently requested)
+// Worker script caching
 const workerScriptCache = {
   data: null,
   timestamp: 0,
@@ -77,12 +73,12 @@ app.get("/worker.js", (req, res) => {
   });
 });
 
-// Handle 404 efficiently
+// 404 handling
 app.use((req, res) => {
   res.status(404).sendFile(path.join(__dirname, "./static/404.html"));
 });
 
-// Improved server handling
+// HTTP server events
 server.on("request", (req, res) => {
   if (bareServer.shouldRoute(req)) {
     bareServer.routeRequest(req, res);
@@ -101,10 +97,9 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
-// Add server listening event
+// Server listening event
 server.on("listening", () => {
   const port = server.address().port;
-
   console.log(chalk.bgBlue.white.bold(`  Welcome to Doge V4, user!  `) + "\n");
   console.log(chalk.cyan("-----------------------------------------------"));
   console.log(chalk.green("  🌟 Status: ") + chalk.bold("Active"));
@@ -118,7 +113,7 @@ server.on("listening", () => {
   console.log(chalk.cyan("-----------------------------------------------"));
 });
 
-// Graceful shutdown function
+// Graceful shutdown handling
 function shutdown(signal) {
   console.log(chalk.bgRed.white.bold(`  Shutting Down (Signal: ${signal})  `) + "\n");
   console.log(chalk.red("-----------------------------------------------"));
@@ -136,5 +131,5 @@ function shutdown(signal) {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-// Start the server with port 8000
+// Server start
 server.listen({ port: 8000 });
