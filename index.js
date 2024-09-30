@@ -8,28 +8,28 @@ import { uvPath } from "@titaniumnetwork-dev/ultraviolet";
 import wisp from "wisp-server-node";
 import request from "@cypress/request";
 import chalk from "chalk";
-import packageJson from "./package.json" assert { type: "json" };
 import compression from "compression";
+import packageJson from "./package.json" assert { type: "json" };
 
 const __dirname = path.resolve();
+const app = express();
 const server = http.createServer();
 const bareServer = createBareServer("/bare/");
-const app = express();
 const version = packageJson.version;
 const discord = "https://discord.gg/unblocking";
 
-// Pre-compiled routes
-const routes = [
-  { route: "/app", file: "./static/index.html" },
-  { route: "/portal", file: "./static/loader.html" },
-  { route: "/apps", file: "./static/apps.html" },
-  { route: "/gms", file: "./static/gms.html" },
-  { route: "/lessons", file: "./static/agloader.html" },
-  { route: "/info", file: "./static/info.html" },
-  { route: "/edu", file: "./static/loading.html" }
-];
+// Pre-compile static paths
+const staticFiles = {
+  "/app": "index.html",
+  "/portal": "loader.html",
+  "/apps": "apps.html",
+  "/gms": "gms.html",
+  "/lessons": "agloader.html",
+  "/info": "info.html",
+  "/edu": "loading.html",
+};
 
-// Middleware setup
+// Middleware
 app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -38,48 +38,44 @@ app.use("/uv/", express.static(uvPath, { maxAge: "1d" }));
 app.use("/libcurl/", express.static(libcurlPath, { maxAge: "1d" }));
 app.use("/baremux/", express.static(baremuxPath, { maxAge: "1d" }));
 
-// Routes setup
-routes.forEach(({ route, file }) => {
-  app.get(route, (req, res) => {
-    res.sendFile(path.join(__dirname, file));
-  });
+// Precompiled routes
+Object.entries(staticFiles).forEach(([route, file]) => {
+  app.get(route, (req, res) => res.sendFile(path.join(__dirname, "static", file)));
 });
 
 // Redirection
 app.get("/student", (_, res) => res.redirect(302, "/portal"));
 
-// Worker script caching
+// Worker script caching (use express static if possible)
 const workerScriptCache = {
   data: null,
   timestamp: 0,
-  ttl: 1000 * 60 * 10, // Cache for 10 minutes
+  ttl: 10 * 60 * 1000, // 10 minutes
 };
 
 app.get("/worker.js", (req, res) => {
   const now = Date.now();
   if (workerScriptCache.data && now - workerScriptCache.timestamp < workerScriptCache.ttl) {
-    res.setHeader("Content-Type", "text/javascript");
-    return res.send(workerScriptCache.data);
+    res.type("text/javascript").send(workerScriptCache.data);
+  } else {
+    request("https://cdn.surfdoge.pro/worker.js", (error, response, body) => {
+      if (!error && response.statusCode === 200) {
+        workerScriptCache.data = body;
+        workerScriptCache.timestamp = now;
+        res.type("text/javascript").send(body);
+      } else {
+        res.status(500).send("Error fetching worker script");
+      }
+    });
   }
-
-  request("https://cdn.surfdoge.pro/worker.js", (error, response, body) => {
-    if (!error && response.statusCode === 200) {
-      workerScriptCache.data = body;
-      workerScriptCache.timestamp = now;
-      res.setHeader("Content-Type", "text/javascript");
-      res.send(body);
-    } else {
-      res.status(500).send("Error fetching worker script");
-    }
-  });
 });
 
-// 404 handling
+// 404 handler
 app.use((req, res) => {
-  res.status(404).sendFile(path.join(__dirname, "./static/404.html"));
+  res.status(404).sendFile(path.join(__dirname, "static", "404.html"));
 });
 
-// HTTP server events
+// Server events
 server.on("request", (req, res) => {
   if (bareServer.shouldRoute(req)) {
     bareServer.routeRequest(req, res);
@@ -98,10 +94,9 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
-// Server listening event
 server.on("listening", () => {
   const port = server.address().port;
-  console.log(chalk.bgBlue.white.bold(`  Welcome to Doge V4, user!  `) + "\n");
+  console.log(chalk.bgBlue.white.bold(`  Welcome to Doge V4, user!  `));
   console.log(chalk.cyan("-----------------------------------------------"));
   console.log(chalk.green("  🌟 Status: ") + chalk.bold("Active"));
   console.log(chalk.green("  🌍 Port: ") + chalk.bold(chalk.yellow(port)));
@@ -109,28 +104,22 @@ server.on("listening", () => {
   console.log(chalk.cyan("-----------------------------------------------"));
   console.log(chalk.magenta("📦 Version: ") + chalk.bold(version));
   console.log(chalk.magenta("🔗 URL: ") + chalk.underline(`http://localhost:${port}`));
-  console.log(chalk.cyan("-----------------------------------------------"));
   console.log(chalk.blue("💬 Discord: ") + chalk.underline(discord));
-  console.log(chalk.cyan("-----------------------------------------------"));
 });
 
-// Graceful shutdown handling
-function shutdown(signal) {
-  console.log(chalk.bgRed.white.bold(`  Shutting Down (Signal: ${signal})  `) + "\n");
-  console.log(chalk.red("-----------------------------------------------"));
+// Graceful shutdown
+const shutdown = (signal) => {
+  console.log(chalk.bgRed.white.bold(`  Shutting Down (Signal: ${signal})  `));
   console.log(chalk.yellow("  🛑 Status: ") + chalk.bold("Shutting Down"));
   console.log(chalk.yellow("  🕒 Time: ") + chalk.bold(new Date().toLocaleTimeString()));
-  console.log(chalk.red("-----------------------------------------------"));
-  console.log(chalk.blue("  Performing graceful exit..."));
-
   server.close(() => {
     console.log(chalk.blue("  Doge has been closed."));
     process.exit(0);
   });
-}
+};
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-// Server start
-server.listen({ port: 8000 });
+// Start server
+server.listen(8000);
